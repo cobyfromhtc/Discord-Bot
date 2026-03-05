@@ -166,6 +166,11 @@ class ServerConfig:
 
 
 @dataclass
+class RobloxConfig:
+    verification_game_url: str = "https://www.roblox.com/games/YOUR_GAME_ID_HERE"  # Replace with your game URL
+
+
+@dataclass
 class TimingConfig:
     invite_check_interval_minutes: int = 5
     auto_scan_interval_hours: int = 2
@@ -196,6 +201,7 @@ class Config:
         self.servers = ServerConfig()
         self.timing = TimingConfig()
         self.limits = LimitsConfig()
+        self.roblox = RobloxConfig()  # ← ADD THIS LINE
 
         self.data_dir = "Data"
         self.json_dir = "Data/JsonData"
@@ -1441,6 +1447,7 @@ VERIFICATION_QUESTIONS: List[Tuple[str, str]] = [
     ("Do you have any Previous Experiences with Gangs [Ex: FiveM, Ro hood rp, Street shooters, Etc..]?", "Previous Gang Experience"),
     ("What is your Discord username?", "Discord Username"),
     ("What is your ROBLOX Username?", "ROBLOX Username"),
+    ("ROBLOX_VERIFICATION_STEP", "Roblox Verification"),  # Special marker for verification
     ("What do you want your gang name to be? (Format: MOS_YourGangName)", "Desired Gang Name"),
     ("How was your experience with our verification system?", "Feedback")
 ]
@@ -6040,8 +6047,99 @@ async def verify(ctx: commands.Context) -> None:
 
 async def _collect_verification_responses(ctx: commands.Context) -> Optional[Dict[str, Optional[str]]]:
     responses: Dict[str, Optional[str]] = {}
+    roblox_username = None  # Store for verification
     
     for idx, (question, label) in enumerate(VERIFICATION_QUESTIONS, 1):
+        # Handle Roblox Verification step
+        if label == "Roblox Verification" and question == "ROBLOX_VERIFICATION_STEP":
+            if roblox_username is None:
+                # Skip if no roblox username was captured
+                continue
+            
+            # Send verification instructions
+            verification_embed = discord.Embed(
+                title="🎮 ROBLOX Account Verification",
+                description=(
+                    f"Let's verify your ROBLOX account: **{roblox_username}**\n\n"
+                    f"**Steps:**\n"
+                    f"1️⃣ Join our verification game: [Click Here to Join]({config.roblox.verification_game_url})\n"
+                    f"2️⃣ Once in the game, click the button to **Generate Code**\n"
+                    f"3️⃣ Copy the **6-character code** shown\n"
+                    f"4️⃣ Paste the code here\n\n"
+                    f"⚠️ **Important:** The code is unique to your account. Do not share it with anyone!"
+                ),
+                color=discord.Color.blue()
+            )
+            verification_embed.set_footer(text="⏱️ You have 5 minutes to complete verification")
+            
+            await ctx.author.send(embed=verification_embed)
+            
+            # Wait for code input with retries
+            max_attempts = 3
+            for attempt in range(max_attempts):
+                try:
+                    response = await bot.wait_for(
+                        'message', 
+                        check=lambda m: m.author == ctx.author and m.channel.type == discord.ChannelType.private, 
+                        timeout=300  # 5 minutes
+                    )
+                    
+                    code = response.content.strip().upper()
+                    
+                    # Verify the code
+                    if code in verification_codes:
+                        stored_data = verification_codes[code]
+                        stored_username = stored_data.get('roblox_username', '').lower()
+                        
+                        if stored_username == roblox_username.lower():
+                            # Success! Code matches the username
+                            responses[label] = f"✅ Verified: {roblox_username}"
+                            
+                            # Remove the used code
+                            del verification_codes[code]
+                            
+                            success_embed = discord.Embed(
+                                title="✅ Verification Successful!",
+                                description=f"Your ROBLOX account **{roblox_username}** has been verified!",
+                                color=discord.Color.green()
+                            )
+                            await ctx.author.send(embed=success_embed)
+                            break
+                        else:
+                            # Code belongs to different user
+                            await ctx.author.send(embed=EmbedBuilder.warning(
+                                "❌ Code Mismatch",
+                                f"This code was generated for a different ROBLOX account. "
+                                f"Please generate a new code while logged in as **{roblox_username}**."
+                            ))
+                    else:
+                        # Invalid or expired code
+                        remaining = max_attempts - attempt - 1
+                        if remaining > 0:
+                            await ctx.author.send(embed=EmbedBuilder.warning(
+                                "❌ Invalid Code",
+                                f"That code is invalid or expired. Please make sure you:\n"
+                                f"• Joined the correct game\n"
+                                f"• Generated a new code\n"
+                                f"• Copied the code exactly\n\n"
+                                f"**{remaining}** attempt(s) remaining."
+                            ))
+                        else:
+                            process_manager.remove_verification(ctx.author.id)
+                            await ctx.author.send(embed=EmbedBuilder.error(
+                                "❌ Verification Failed",
+                                "Too many invalid attempts. Please run `!verify` again."
+                            ))
+                            return None
+                            
+                except asyncio.TimeoutError:
+                    process_manager.remove_verification(ctx.author.id)
+                    await ctx.author.send("⚠️ Roblox verification timed out. Please run `!verify` again.")
+                    return None
+            
+            continue  # Move to next question
+        
+        # Handle Agreement step (existing code)
         if label == "Agreement":
             agreement_embed = EmbedBuilder.verification("Agreement - Terms & Rules", question)
             agreement_embed.add_field(name="Instructions", value="Click the buttons below to view the rules for both servers.\nAfter reviewing, type **'I agree'** to continue.", inline=False)
@@ -6073,6 +6171,21 @@ async def _collect_verification_responses(ctx: commands.Context) -> Optional[Dic
                 process_manager.remove_verification(ctx.author.id)
                 await ctx.author.send("Verification timed out. Please try again.")
                 return None
+        
+        # Capture Roblox Username for later verification
+        elif label == "ROBLOX Username":
+            await ctx.author.send(embed=EmbedBuilder.info(f"Question {idx} of {len(VERIFICATION_QUESTIONS)}", question))
+            
+            try:
+                response = await bot.wait_for('message', check=lambda m: m.author == ctx.author and m.channel.type == discord.ChannelType.private, timeout=config.timing.verification_timeout_seconds)
+                roblox_username = response.content.strip()  # Store for verification
+                responses[label] = response.content
+            except asyncio.TimeoutError:
+                process_manager.remove_verification(ctx.author.id)
+                await ctx.author.send("Verification timed out. Please try again.")
+                return None
+        
+        # Handle other questions (existing code)
         else:
             await ctx.author.send(embed=EmbedBuilder.info(f"Question {idx} of {len(VERIFICATION_QUESTIONS)}", question))
             
@@ -6089,7 +6202,6 @@ async def _collect_verification_responses(ctx: commands.Context) -> Optional[Dic
                 return None
     
     return responses
-
 
 async def _confirm_submission(ctx: commands.Context) -> bool:
     await ctx.author.send(embed=EmbedBuilder.info("Confirm Submission", "Reply **'yes'** to confirm or **'no'** to cancel"))
