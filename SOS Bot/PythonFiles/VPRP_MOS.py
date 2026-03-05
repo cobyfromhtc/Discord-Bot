@@ -203,13 +203,13 @@ class Config:
         self.limits = LimitsConfig()
         self.roblox = RobloxConfig()  # ← ADD THIS LINE
 
-        self.data_dir = "Data"
-        self.json_dir = "Data/JsonData"
-        self.db_file = "Data/bot_data.db"
+        self.data_dir = "data"
+        self.json_dir = "data/JsonData"
+        self.db_file = "data/bot_data.db"
         self.lock_file = "bot_busy.lock"
 
-        self.tickets_data_file = "Data/JsonData/tickets_data.json"
-        self.giveaways_data_file = "Data/JsonData/giveaways_data.json"
+        self.tickets_data_file = "data/JsonData/tickets_data.json"
+        self.giveaways_data_file = "data/JsonData/giveaways_data.json"
 
         self.enable_leveling = True
         self.enable_tickets = True
