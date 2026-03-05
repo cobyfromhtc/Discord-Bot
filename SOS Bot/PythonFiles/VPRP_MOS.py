@@ -1993,7 +1993,41 @@ class VerificationButtonsView(View):
                     child.disabled = True
                 
                 await interaction.message.edit(embed=embed, view=self)
-                await interaction.response.send_message(f"Application for {user.mention} has been accepted. Member role assigned.", ephemeral=True)
+
+                # --- SET NICKNAME: MOS_GangName (@Roblox_Username) ---
+                nickname_set = False
+                try:
+                    gang_name = None
+                    roblox_username = None
+
+                    for field in embed.fields:
+                        if field.name == "Desired Gang Name":
+                            gang_name = field.value.strip()
+                        elif field.name == "Roblox Verification" and field.value.startswith("✅ Verified:"):
+                            # Value is like "✅ Verified: MOSLeader_Cash"
+                            roblox_username = field.value.replace("✅ Verified:", "").strip()
+
+                    if gang_name and roblox_username:
+                        new_nickname = f"{gang_name} (@{roblox_username})"
+                        # Discord nickname limit is 32 characters
+                        if len(new_nickname) > 32:
+                            new_nickname = new_nickname[:32]
+                        await user.edit(nick=new_nickname)
+                        nickname_set = True
+                        logging.info(f"Nickname set to '{new_nickname}' for {user}")
+                    else:
+                        logging.warning(f"Could not set nickname for {user}: gang_name={gang_name}, roblox_username={roblox_username}")
+                except discord.Forbidden:
+                    logging.warning(f"Missing permissions to change nickname for {user}")
+                except Exception as nick_err:
+                    logging.error(f"Failed to set nickname for {user}: {nick_err}")
+                # ----------------------------------------------------------
+
+                nick_note = f"\nNickname set to **{new_nickname}**" if nickname_set else "\n⚠️ Could not auto-set nickname (missing permissions or data)."
+                await interaction.response.send_message(
+                    f"Application for {user.mention} has been accepted. Member role assigned.{nick_note}",
+                    ephemeral=True
+                )
                 
                 await self._notify_accepted_user(user)
                 logging.info(f"Application accepted for {user} by {interaction.user}")
