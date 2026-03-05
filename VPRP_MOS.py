@@ -167,7 +167,7 @@ class ServerConfig:
 
 @dataclass
 class RobloxConfig:
-    verification_game_url: str = "https://www.roblox.com/games/YOUR_GAME_ID_HERE"  # Replace with your game URL
+    verification_game_url: str = "https://www.roblox.com/games/121601123290942/MOS-Roblox-Account-Verification"  # Replace with your game URL
 
 
 @dataclass
