@@ -6466,7 +6466,7 @@ def read_token_from_file(token_name: str = 'BOT_Token') -> Optional[str]:
 
 
 # --- MAIN ENTRY POINT ---
-TOKEN = read_token_from_file('BOT_Token')
+TOKEN = os.environ.get('BOT_Token') or read_token_from_file('BOT_Token')
 
 if TOKEN is None:
     print("=" * 50)
