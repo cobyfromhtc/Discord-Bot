@@ -1,1 +1,1 @@
-worker: python VPRP_MOS.py
+worker: python "SOS Bot/PythonFiles/VPRP_MOS.py"
