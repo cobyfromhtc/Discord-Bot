@@ -46,6 +46,53 @@ except ImportError:
 if FLASK_AVAILABLE:
     app = Flask(__name__)
     
+    # Configuration
+    SECRET_KEY = "VPRP_MOS_2026"  # Must match Roblox script
+    verification_codes = {}  # Store codes: {code: {roblox_user_id, roblox_username, timestamp}}
+    
+    @app.route('/store_code', methods=['POST'])
+    def store_code():
+        from flask import request, jsonify
+        data = request.get_json()
+        
+        # Verify secret key
+        if not data or data.get('secret') != SECRET_KEY:
+            return jsonify({'error': 'Unauthorized'}), 401
+        
+        # Check required fields (matches Roblox script)
+        if not data.get('code') or not data.get('roblox_username'):
+            return jsonify({'error': 'Missing code or username'}), 400
+        
+        verification_codes[data['code']] = {
+            'roblox_user_id': data.get('roblox_user_id'),
+            'roblox_username': data.get('roblox_username'),
+            'timestamp': data.get('timestamp')
+        }
+        
+        logging.info(f"[Roblox] Stored code {data['code']} for {data['roblox_username']}")
+        return jsonify({'success': True}), 200
+    
+    @app.route('/invalidate_code', methods=['POST'])
+    def invalidate_code():
+        from flask import request, jsonify
+        data = request.get_json()
+        
+        # Verify secret key
+        if not data or data.get('secret') != SECRET_KEY:
+            return jsonify({'error': 'Unauthorized'}), 401
+        
+        roblox_user_id = data.get('roblox_user_id')
+        
+        # Remove any codes for this user
+        codes_to_remove = [code for code, info in verification_codes.items() 
+                           if info.get('roblox_user_id') == roblox_user_id]
+        
+        for code in codes_to_remove:
+            del verification_codes[code]
+        
+        logging.info(f"[Roblox] Invalidated {len(codes_to_remove)} codes for user {roblox_user_id}")
+        return jsonify({'success': True, 'invalidated': len(codes_to_remove)}), 200
+    
     def run_web():
         app.run(host='0.0.0.0', port=5000)
 
